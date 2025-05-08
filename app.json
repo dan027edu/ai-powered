@@ -4,24 +4,26 @@
     "slug": "ai-powered",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/appicon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/appicon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF",
+      "hideExponentText": true
+    },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "icon": "./assets/images/appicon.png"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/appicon.png",
+        "backgroundColor": "#FFFFFF"
       },
-      "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.DOWNLOAD_WITHOUT_NOTIFICATION",
-        "android.permission.ACCESS_NETWORK_STATE"
-      ],
+      "icon": "./assets/images/appicon.png",
       "package": "com.anonymous.aipowered",
       "versionCode": 1
     },
@@ -33,16 +35,7 @@
     "plugins": [
       "expo-router",
       "@config-plugins/react-native-pdf",
-      "@config-plugins/react-native-blob-util",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ]
+      "@config-plugins/react-native-blob-util"
     ],
     "experiments": {
       "typedRoutes": true

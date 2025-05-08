@@ -1,14 +1,16 @@
 import React from 'react';
 import { StatusBar } from 'react-native';
-import { SharedUploadScreen } from '../components/SharedUploadScreen';
+// Changed to default import (removed curly braces)
+import SharedUploadScreen from '../components/SharedUploadScreen'; // <--- Changed import
 
-const API_URL = 'http://192.168.1.7:8000/api';
+// Update this to your DigitalOcean Droplet's public IP address
+const API_URL = "http://159.223.53.201/api";
 
 const RegistrarUploadScreen = () => {
   return (
     <>
       <StatusBar backgroundColor="#15311E" barStyle="light-content" />
-      <SharedUploadScreen 
+      <SharedUploadScreen
         apiUrl={API_URL}
         redirectPath="/(registrar)/home"
       />

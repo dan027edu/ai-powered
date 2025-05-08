@@ -15,10 +15,12 @@ import {
   RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router'; // Import usePathname
 
 const screenWidth = Dimensions.get('window').width;
-const API_URL = 'http://192.168.1.7:8000/api';
+
+// Update this to your DigitalOcean Droplet's public IP address
+const API_URL = 'http://159.223.53.201/api';
 
 interface Document {
   id: string;
@@ -29,11 +31,12 @@ interface Document {
   description: string;
   uploader_name: string;
   status: 'pending' | 'in_review' | 'approved' | 'rejected';
-  file_id: string;
+  file_id: string; // Assuming file_id is also part of the document structure
 }
 
 const RegistrarHomeScreen = () => {
   const router = useRouter();
+  const pathname = usePathname(); // Get the current pathname
   const [activeTab, setActiveTab] = useState<'pending' | 'in_review' | 'approved' | 'rejected'>('pending');
   const [searchText, setSearchText] = useState('');
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -41,6 +44,7 @@ const RegistrarHomeScreen = () => {
 
   const fetchDocuments = useCallback(async () => {
     try {
+      // Use the updated API_URL here
       const response = await fetch(`${API_URL}/documents/`);
       if (!response.ok) throw new Error('Failed to fetch documents');
       const data = await response.json();
@@ -62,7 +66,7 @@ const RegistrarHomeScreen = () => {
   }, [fetchDocuments]);
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = searchText === '' || 
+    const matchesSearch = searchText === '' ||
       doc.file_name.toLowerCase().includes(searchText.toLowerCase()) ||
       (doc.description && doc.description.toLowerCase().includes(searchText.toLowerCase()));
     const matchesStatus = doc.status === activeTab;
@@ -71,6 +75,7 @@ const RegistrarHomeScreen = () => {
 
   const handleStatusUpdate = async (documentId: string, newStatus: Document['status']) => {
     try {
+      // Use the updated API_URL here
       const response = await fetch(`${API_URL}/documents/${documentId}/status/`, {
         method: 'PUT',
         headers: {
@@ -78,21 +83,35 @@ const RegistrarHomeScreen = () => {
         },
         body: JSON.stringify({ status: newStatus }),
       });
-      
+
       if (!response.ok) {
-        throw new Error('Failed to update document status');
+        const errorBody = await response.text();
+        console.error('Status update failed with response:', response.status, errorBody);
+        try {
+          const errorJson = JSON.parse(errorBody);
+           throw new Error(errorJson.error || 'Failed to update document status');
+        } catch {
+           throw new Error(`Failed to update document status. Status: ${response.status}`);
+        }
       }
-      
+
       fetchDocuments(); // Refresh the list
       Alert.alert('Success', `Document ${newStatus.replace('_', ' ')}`);
     } catch (error) {
       console.error('Error updating document status:', error);
-      Alert.alert('Error', `Failed to update document status to ${newStatus.replace('_', ' ')}`);
+       let errorMessage = 'An unexpected error occurred';
+       if (error instanceof Error) {
+           errorMessage = error.message;
+       } else if (typeof error === 'string') {
+           errorMessage = error;
+       }
+      Alert.alert('Error', `Failed to update document status: ${errorMessage}`);
     }
   };
 
   const handleApproveDocument = (documentId: string) => handleStatusUpdate(documentId, 'approved');
   const handleRejectDocument = (documentId: string) => handleStatusUpdate(documentId, 'rejected');
+  // Corrected handleReceiveDocument to use documentId
   const handleReceiveDocument = (documentId: string) => handleStatusUpdate(documentId, 'in_review');
 
   const renderDocumentItem = ({ item }: { item: Document }) => (
@@ -101,24 +120,24 @@ const RegistrarHomeScreen = () => {
         <Text style={styles.documentTitle}>{item.file_name}</Text>
         <Text style={styles.documentSubtitle}>{item.description || 'No description'}</Text>
         <Text style={styles.documentSubtitle}>Submitted: {new Date(item.uploaded_at).toLocaleDateString()}</Text>
-        
+
         <View style={styles.documentActions}>
           {activeTab === 'in_review' && (
             <>
               <TouchableOpacity
                 style={styles.viewButton}
-                onPress={() => router.push(`/screen/versionhistory`)}
+                onPress={() => router.push(`/screen/versionhistory`)} // Consider passing document ID here
               >
                 <Text style={styles.viewButtonText}>View Document</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.approveButton}
                 onPress={() => handleApproveDocument(item.id)}
               >
                 <Text style={styles.approveButtonText}>Approve</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
                 style={styles.rejectButton}
                 onPress={() => handleRejectDocument(item.id)}
@@ -127,11 +146,11 @@ const RegistrarHomeScreen = () => {
               </TouchableOpacity>
             </>
           )}
-          
+
           {activeTab === 'pending' && (
             <TouchableOpacity
               style={styles.viewButton}
-              onPress={() => handleReceiveDocument(item.id)}
+              onPress={() => handleReceiveDocument(item.id)} // Pass item.id here
             >
               <Text style={styles.viewButtonText}>Receive</Text>
             </TouchableOpacity>
@@ -141,15 +160,15 @@ const RegistrarHomeScreen = () => {
             <>
               <TouchableOpacity
                 style={styles.viewButton}
-                onPress={() => router.push(`/screen/versionhistory`)}
+                 onPress={() => router.push(`/screen/versionhistory`)} // Consider passing document ID here
               >
                 <Text style={styles.viewButtonText}>View Document</Text>
               </TouchableOpacity>
-              <View style={[styles.statusChip, { 
-                backgroundColor: activeTab === 'approved' ? '#4CAF50' : '#F44336' 
+              <View style={[styles.statusChip, {
+                backgroundColor: activeTab === 'approved' ? '#4CAF50' : '#F44336'
               }]}>
                 <Text style={styles.statusText}>
-                  {activeTab.charAt(0).toUpperCase() + activeTab.slice(1)}
+                  {activeTab.charAt(0).toUpperCase() + activeTab.slice(1).replace('_', ' ')} {/* Added replace for display */}
                 </Text>
               </View>
             </>
@@ -159,25 +178,28 @@ const RegistrarHomeScreen = () => {
     </View>
   );
 
-  const getActiveButtonStyle = (buttonName: string) => ({
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    flex: 1,
-    height: 48,
-    backgroundColor: activeTab === buttonName ? '#0D2D1D' : 'transparent',
-  });
+  const getActiveButtonStyle = (routeName: string) => {
+    const isActive = pathname.includes(routeName); // Use pathname to check active state
+    return {
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      flex: 1,
+      height: 48,
+      backgroundColor: isActive ? '#0D2D1D' : 'transparent', // Apply style based on isActive
+    };
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor="#15311E" barStyle="light-content" />
-      
+
       {/* Header */}
       <View style={styles.headerContainer}>
         <Image
           source={require('../../assets/images/udmaddress.png')}
           style={styles.headerImage}
         />
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.bellButton}
           onPress={() => router.push('/screen/notification')}
         >
@@ -223,7 +245,7 @@ const RegistrarHomeScreen = () => {
       <FlatList
         data={filteredDocuments}
         renderItem={renderDocumentItem}
-        keyExtractor={item => item.id}
+        keyExtractor={item => String(item.id)} // Explicitly convert id to string
         contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80 }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
@@ -232,17 +254,17 @@ const RegistrarHomeScreen = () => {
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={getActiveButtonStyle('home')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('/(registrar)/home')} // Use route path for highlighting
           activeOpacity={0.7}
-          onPress={() => router.replace("/(registrar)/home")}
+          onPress={() => router.push("/(registrar)/home")}
         >
           <Icon name="home-outline" size={24} color="#fff" />
           <Text style={styles.navText}>HOME</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('search')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('/(registrar)/search')} // Use route path for highlighting
           activeOpacity={0.7}
           onPress={() => router.push("/(registrar)/search")}
         >
@@ -250,8 +272,8 @@ const RegistrarHomeScreen = () => {
           <Text style={styles.navText}>SEARCH</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('upload')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('/(registrar)/upload')} // Use route path for highlighting
           activeOpacity={0.7}
           onPress={() => router.push("/(registrar)/upload")}
         >
@@ -259,8 +281,8 @@ const RegistrarHomeScreen = () => {
           <Text style={styles.navText}>UPLOAD</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('profile')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('/(registrar)/profile')} // Use route path for highlighting
           activeOpacity={0.7}
           onPress={() => router.push("/(registrar)/profile")}
         >
@@ -370,9 +392,26 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
   },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 8,
+  },
+  tagChip: {
+    backgroundColor: '#E8F0EE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 6,
+    marginBottom: 4,
+  },
+  tagText: {
+    color: '#15311E',
+    fontSize: 12,
+  },
   documentActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-start',
+    justifyContent: 'flex-start', // Changed to flex-start for consistent button alignment
     alignItems: 'center',
     marginTop: 8,
   },
@@ -381,7 +420,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 4,
-    marginRight: 8,
+    marginRight: 8, // Added margin for spacing
   },
   viewButtonText: {
     color: '#fff',
@@ -392,7 +431,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 4,
-    marginRight: 8,
+    marginRight: 8, // Added margin for spacing
   },
   approveButtonText: {
     color: '#fff',
@@ -414,7 +453,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 'auto', // Use auto margin to push to the right
   },
   statusText: {
     color: '#fff',

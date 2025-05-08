@@ -68,7 +68,10 @@ const SignupScreen = () => {
         </View>
 
         {/* Sign Up Button */}
-        <TouchableOpacity style={styles.signupButton}>
+        <TouchableOpacity 
+          style={styles.signupButton}
+          onPress={() => router.push('/screen/in')}  // Changed navigation to in.tsx
+        >
           <Text style={styles.signupText}>Sign up</Text>
         </TouchableOpacity>
 
@@ -77,12 +80,12 @@ const SignupScreen = () => {
           <Text style={styles.forgotText}>Forgot the password?</Text>
         </TouchableOpacity>
 
-        <Text style={styles.loginPrompt}>
-          Already have an account?{' '}
+        <View style={styles.loginPromptContainer}>
+          <Text style={styles.loginPromptText}>Already have an account? </Text>
           <TouchableOpacity onPress={() => router.push('/screen/in')}>
             <Text style={styles.loginLink}>Login Now</Text>
           </TouchableOpacity>
-        </Text>
+        </View>
       </View>
     </ImageBackground>
   );
@@ -164,13 +167,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 10,
   },
-  loginPrompt: {
-    marginTop: 10,
+  loginPromptContainer: {
+    marginTop: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loginPromptText: {
     fontSize: 13,
     color: '#15311E',
   },
   loginLink: {
     color: '#15311E',
     fontWeight: 'bold',
+    fontSize: 13,
   },
 });

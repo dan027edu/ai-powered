@@ -32,12 +32,12 @@ const ForgotPasswordScreen = () => {
           <Text style={styles.secondaryText}>Sign Up</Text>
         </TouchableOpacity>
 
-        <Text style={styles.loginPrompt}>
-          Try Logging in?{' '}
+        <View style={styles.loginPrompt}>
+          <Text style={styles.loginText}>Try Logging in?</Text>
           <TouchableOpacity onPress={() => router.push('/screen/in')}>
             <Text style={styles.loginLink}>Login Now</Text>
           </TouchableOpacity>
-        </Text>
+        </View>
       </View>
     </ImageBackground>
   );
@@ -113,10 +113,18 @@ const styles = StyleSheet.create({
   },
   loginPrompt: {
     marginTop: 20,
+    alignItems: 'center',
+    flexDirection: 'column',
+  },
+  loginText: {
     fontSize: 13,
+    color: '#000',
+    marginBottom: 5,
   },
   loginLink: {
     color: '#0D2D1D',
     fontWeight: 'bold',
+    fontSize: 13,
+    marginTop: 4,
   },
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, memo } from 'react';
-import { 
+import {
   View,
   Text,
   StyleSheet,
@@ -20,6 +20,9 @@ import { useRouter, usePathname } from 'expo-router';
 
 const screenWidth = Dimensions.get('window').width;
 
+// Update this to your DigitalOcean Droplet's public IP address
+const API_URL = 'http://159.223.53.201/api';
+
 // Type definitions
 interface Document {
   id: string;
@@ -29,12 +32,16 @@ interface Document {
   classifications: string[];
   description: string;
   uploader_name: string;
+  // Assuming status and file_id might also be relevant for search results or future use
+  status?: 'pending' | 'in_review' | 'approved' | 'rejected';
+  file_id?: string;
 }
 
 interface Props {
   isRegistrar?: boolean;
 }
 
+// Updated DocumentItem to use View with flexWrap for classifications
 const DocumentItem = memo(({ item, onClassificationPress }: { item: Document, onClassificationPress: (tag: string) => void }) => (
   <View style={styles.documentItem}>
     <View style={styles.documentIcon}>
@@ -42,24 +49,24 @@ const DocumentItem = memo(({ item, onClassificationPress }: { item: Document, on
     </View>
     <View style={styles.documentContent}>
       <Text style={styles.documentTitle} numberOfLines={1}>{item.file_name}</Text>
-      <Text style={styles.uploader} numberOfLines={1}>Uploaded by: {item.uploader_name}</Text>
-      <Text style={styles.documentSubtitle} numberOfLines={2}>{item.description}</Text>
-      <FlatList
-        data={item.classifications}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(tag) => tag}
-        renderItem={({ item: tag }) => (
-          <TouchableOpacity 
-            style={styles.tagChip}
-            onPress={() => onClassificationPress(tag)}
-          >
-            <Text style={styles.tagText}>
-              {tag.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-            </Text>
-          </TouchableOpacity>
-        )}
-      />
+      {item.uploader_name && <Text style={styles.uploader} numberOfLines={1}>Uploaded by: {item.uploader_name}</Text>}
+      {item.description && <Text style={styles.documentSubtitle} numberOfLines={2}>{item.description}</Text>}
+      {item.classifications && item.classifications.length > 0 && (
+        // Render classifications directly in a View with flexWrap
+        <View style={styles.tagsContainer}>
+          {item.classifications.map((classification, index) => (
+            <TouchableOpacity
+              key={`${item.id}-${classification}-${index}`} // Use a compound key for safety
+              style={styles.tagChip}
+              // onPress={() => handleClassificationPress(tag)} // Uncomment if you have a handler for tag press
+            >
+              <Text style={styles.tagText}>
+                {classification.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </View>
   </View>
 ));
@@ -77,25 +84,42 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
   const fetchDocuments = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://192.168.1.7:8000/api/documents/');
+      // Use the updated API_URL here
+      const response = await fetch(`${API_URL}/documents/`);
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        // Attempt to read error from response body if available
+        const errorBody = await response.text();
+        console.error('Fetch documents failed with response:', response.status, errorBody);
+        try {
+          const errorJson = JSON.parse(errorBody);
+           throw new Error(errorJson.error || 'Failed to fetch documents');
+        } catch {
+           throw new Error(`Failed to fetch documents. Status: ${response.status}`);
+        }
       }
       const data = await response.json();
       setAllDocuments(data);
       setDocuments(data);
-      
+
       // Extract unique classifications
       const classifications = new Set<string>();
       data.forEach((doc: Document) => {
-        doc.classifications.forEach(c => classifications.add(c));
+        if (doc.classifications) { // Ensure classifications array exists
+           doc.classifications.forEach(c => classifications.add(c));
+        }
       });
       setUniqueClassifications(Array.from(classifications));
     } catch (error) {
       console.error('Error fetching documents:', error);
+      let errorMessage = 'An unexpected error occurred';
+       if (error instanceof Error) {
+           errorMessage = error.message;
+       } else if (typeof error === 'string') {
+           errorMessage = error;
+       }
       Alert.alert(
         'Error',
-        'Unable to fetch documents. Please check your connection and try again.'
+        `Unable to fetch documents: ${errorMessage}. Please check your connection and try again.`
       );
     } finally {
       setLoading(false);
@@ -108,20 +132,21 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
 
   useEffect(() => {
     let filtered = [...allDocuments];
-    
+
     if (selectedClassification) {
-      filtered = filtered.filter(doc => 
-        doc.classifications.includes(selectedClassification)
+      filtered = filtered.filter(doc =>
+         doc.classifications && doc.classifications.includes(selectedClassification) // Ensure classifications array exists
       );
     }
-    
+
     if (searchQuery) {
       filtered = filtered.filter(doc =>
         doc.file_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (doc.description && doc.description.toLowerCase().includes(searchQuery.toLowerCase()))
+        (doc.description && doc.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (doc.uploader_name && doc.uploader_name.toLowerCase().includes(searchQuery.toLowerCase())) // Added uploader name to search
       );
     }
-    
+
     setDocuments(filtered);
   }, [searchQuery, selectedClassification, allDocuments]);
 
@@ -147,13 +172,15 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
     </TouchableOpacity>
   );
 
-  const getItemLayout = useCallback((data: Document[] | null | undefined, index: number) => ({
-    length: 120, // Approximate height of each item
-    offset: 120 * index,
-    index,
-  }), []);
+  // Removed getItemLayout as it's problematic with variable item heights
+  // const getItemLayout = useCallback((data: Document[] | null | undefined, index: number) => ({
+  //   length: 120, // Approximate height of each item - adjust if needed
+  //   offset: 120 * index,
+  //   index,
+  // }), []);
 
   const renderItem = useCallback(({ item }: { item: Document }) => (
+    // Pass item.id or file_id if you want to navigate to a detail screen
     <DocumentItem item={item} onClassificationPress={handleClassificationPress} />
   ), [handleClassificationPress]);
 
@@ -170,12 +197,16 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <StatusBar backgroundColor="#15311E" barStyle="light-content" />
       <View style={styles.headerContainer}>
-        <Image 
+        <Image
           source={require('../../assets/images/udmaddress.png')}
           style={styles.headerImage}
         />
-        <TouchableOpacity style={styles.bellButton}>
+        <TouchableOpacity
+          style={styles.bellButton}
+          onPress={() => router.push(isRegistrar ? '/screen/notification' : '/screen/notification')} // Adjust notification path based on role if needed
+        >
           <Icon name="notifications-outline" size={24} color="#fff" />
         </TouchableOpacity>
       </View>
@@ -192,37 +223,51 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
         </View>
       </View>
 
-      <View style={styles.classificationsContainer}>
-        <FlatList
-          data={uniqueClassifications}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(classification) => classification}
-          renderItem={({ item: classification }) => renderClassificationChip(classification)}
-        />
-      </View>
+      {/* Classifications Filter Chips */}
+      {uniqueClassifications.length > 0 && (
+        <View style={styles.classificationsContainer}>
+          <FlatList
+            data={uniqueClassifications}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={(classification) => classification} // Classification tags themselves should be unique
+            renderItem={({ item: classification }) => renderClassificationChip(classification)}
+            contentContainerStyle={{ paddingRight: 16 }} // Add some padding at the end
+          />
+        </View>
+      )}
+
 
       {loading ? (
-        <ActivityIndicator style={{ marginTop: 20 }} />
+        <ActivityIndicator style={{ marginTop: 20 }} size="large" color="#15311E" />
       ) : (
-        <FlatList
-          data={documents}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
-          getItemLayout={getItemLayout}
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={10}
-          updateCellsBatchingPeriod={50}
-          windowSize={5}
-          initialNumToRender={7}
-        />
+         documents.length === 0 ? (
+            <View style={styles.noDocumentsContainer}>
+                <Text style={styles.noDocumentsText}>No documents found.</Text>
+            </View>
+         ) : (
+            <FlatList
+              data={documents}
+              renderItem={renderItem}
+              // Explicitly convert id to string for the keyExtractor
+              keyExtractor={(item) => String(item.id)}
+              contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+              // Removed getItemLayout prop
+              // getItemLayout={getItemLayout}
+              // Performance optimizations (can be adjusted based on testing)
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={10}
+              updateCellsBatchingPeriod={50}
+              windowSize={5}
+              initialNumToRender={7}
+            />
+         )
       )}
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={getActiveButtonStyle('home')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('home')}
           activeOpacity={0.7}
           onPress={() => router.replace(isRegistrar ? '/(registrar)/home' : '/(faculty)/home')}
         >
@@ -230,8 +275,8 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
           <Text style={styles.navText}>HOME</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('search')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('search')}
           activeOpacity={0.7}
           onPress={() => router.push(isRegistrar ? '/(registrar)/search' : '/(faculty)/search')}
         >
@@ -239,8 +284,8 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
           <Text style={styles.navText}>SEARCH</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('upload')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('upload')}
           activeOpacity={0.7}
           onPress={() => router.push(isRegistrar ? '/(registrar)/upload' : '/(faculty)/upload')}
         >
@@ -248,10 +293,10 @@ const SharedSearchScreen: React.FC<Props> = ({ isRegistrar = false }) => {
           <Text style={styles.navText}>UPLOAD</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('profile')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('profile')}
           activeOpacity={0.7}
-          onPress={() => router.replace(isRegistrar ? '/screen/profile' : '/(faculty)/profile')}
+          onPress={() => router.replace(isRegistrar ? '/(registrar)/profile' : '/(faculty)/profile')} // Corrected navigation path for registrar profile
         >
           <Icon name="person-outline" size={24} color="#fff" />
           <Text style={styles.navText}>PROFILE</Text>
@@ -311,7 +356,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   classificationsContainer: {
-    height: 50,
+    height: 50, // Fixed height for the horizontal FlatList
     paddingHorizontal: 16,
     marginTop: 8,
     marginBottom: 4,
@@ -322,7 +367,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 16,
     marginRight: 8,
-    marginVertical: 6,
+    marginVertical: 6, // Added vertical margin for spacing in the horizontal list
     elevation: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -382,8 +427,9 @@ const styles = StyleSheet.create({
   },
   tagsContainer: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 2,
+    flexWrap: 'wrap', // <--- This style is now correctly applied to a View
+    marginTop: 2, // Adjusted margin top
+    marginBottom: 6, // Adjusted margin bottom
   },
   tagChip: {
     backgroundColor: '#E8F0EE',
@@ -391,11 +437,22 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
     borderRadius: 12,
     marginRight: 6,
+    marginBottom: 4, // Added margin bottom for wrapping
   },
   tagText: {
     fontSize: 11,
     color: '#15311E',
     fontWeight: '500',
+  },
+  noDocumentsContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginTop: 50, // Adjust as needed
+  },
+  noDocumentsText: {
+      fontSize: 18,
+      color: '#666',
   },
   bottomNav: {
     position: 'absolute',

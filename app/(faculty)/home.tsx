@@ -13,12 +13,15 @@ import {
   StatusBar,
   RefreshControl,
   Alert,
+  ActivityIndicator, // Import ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { useRouter, usePathname } from 'expo-router';
 
 const screenWidth = Dimensions.get('window').width;
-const API_URL = 'http://192.168.1.7:8000/api';
+
+// Update this to your DigitalOcean Droplet's public IP address
+const API_URL = 'http://159.223.53.201/api';
 
 interface Document {
   id: string;
@@ -29,7 +32,7 @@ interface Document {
   description: string;
   uploader_name: string;
   status: 'pending' | 'in_review' | 'approved' | 'rejected';
-  file_id: string;
+  file_id: string; // Assuming file_id is also part of the document structure
 }
 
 export default function FacultyHome() {
@@ -38,17 +41,52 @@ export default function FacultyHome() {
   const [activeTab, setActiveTab] = useState<'pending' | 'in_review' | 'approved' | 'rejected'>('pending');
   const [searchText, setSearchText] = useState('');
   const [documents, setDocuments] = useState<Document[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]); // Keep all documents for filtering
+  const [filteredDocuments, setFilteredDocuments] = useState<Document[]>([]); // State for filtered documents
+  const [loading, setLoading] = useState(false); // State for loading indicator
   const [refreshing, setRefreshing] = useState(false);
 
+  // Helper function to format status text properly
+  const formatStatusText = useCallback((status: string) => {
+    return status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }, []);
+
+  // Helper function to format classification text properly
+  const formatClassificationText = useCallback((classification: string) => {
+    return classification.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+  }, []);
+
   const fetchDocuments = useCallback(async () => {
+    setLoading(true); // Start loading
+    console.log('Fetching documents...');
     try {
       const response = await fetch(`${API_URL}/documents/`);
-      if (!response.ok) throw new Error('Failed to fetch documents');
+      if (!response.ok) {
+         const errorBody = await response.text();
+         console.error('Fetch documents failed with response:', response.status, errorBody);
+         try {
+           const errorJson = JSON.parse(errorBody);
+            throw new Error(errorJson.error || 'Failed to fetch documents');
+         } catch {
+            throw new Error(`Failed to fetch documents. Status: ${response.status}`);
+         }
+       }
       const data = await response.json();
-      setDocuments(data);
+      console.log('Documents fetched:', data.length);
+      setAllDocuments(data); // Store all documents
+      // Setting allDocuments will trigger the filtering useEffect
     } catch (error) {
       console.error('Error fetching documents:', error);
-      Alert.alert('Error', 'Failed to load documents. Please try again.');
+      let errorMessage = 'An unexpected error occurred';
+       if (error instanceof Error) {
+           errorMessage = error.message;
+       } else if (typeof error === 'string') {
+           errorMessage = error;
+       }
+      Alert.alert('Error', `Failed to load documents: ${errorMessage}. Please try again.`);
+    } finally {
+      setLoading(false); // End loading
+      console.log('Fetch documents finished.');
     }
   }, []);
 
@@ -59,13 +97,30 @@ export default function FacultyHome() {
   }, [fetchDocuments]);
 
   useEffect(() => {
+    console.log('Initial fetch effect running...');
     fetchDocuments();
-  }, [fetchDocuments]);
+  }, [fetchDocuments]); // Dependency array includes fetchDocuments
 
-  const filteredDocuments = documents.filter(doc => 
-    doc.status === activeTab &&
-    (searchText === '' || doc.file_name.toLowerCase().includes(searchText.toLowerCase()))
-  );
+  // Effect to filter documents whenever search query, active tab, or all documents change
+  useEffect(() => {
+    console.log('Filtering documents...');
+    let filtered = [...allDocuments];
+
+    // Filter by active tab
+    filtered = filtered.filter(doc => doc.status === activeTab);
+
+    // Filter by search query
+    if (searchText) {
+      filtered = filtered.filter(doc =>
+        doc.file_name.toLowerCase().includes(searchText.toLowerCase()) ||
+        (doc.description && doc.description.toLowerCase().includes(searchText.toLowerCase())) ||
+        (doc.uploader_name && doc.uploader_name.toLowerCase().includes(searchText.toLowerCase())) // Added uploader name to search
+      );
+    }
+
+    console.log('Filtered documents count:', filtered.length);
+    setFilteredDocuments(filtered); // Update the state for the FlatList
+  }, [searchText, activeTab, allDocuments]); // Dependencies for filtering
 
   const getStatusColor = (status: Document['status']) => {
     switch (status) {
@@ -91,17 +146,57 @@ export default function FacultyHome() {
     };
   };
 
+  // Render item for the FlatList
+  const renderDocumentItem = useCallback(({ item }: { item: Document }) => (
+    <View style={styles.documentItem}>
+      <View style={styles.documentContent}>
+        <Text style={styles.documentTitle}>{item.file_name}</Text>
+        <Text style={styles.documentSubtitle}>
+          {'Uploaded on '}{new Date(item.uploaded_at).toLocaleDateString()}
+        </Text>
+        {/* Classifications list within the document item - using View with flexWrap */}
+        {item.classifications && item.classifications.length > 0 && (
+          <View style={styles.tagsContainer}>
+            {item.classifications.map((classification, index) => (
+              <TouchableOpacity
+                key={`${item.id}-${classification}-${index}`}
+                style={styles.tagChip}
+              >
+                <Text style={styles.tagText}>
+                  {formatClassificationText(classification)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+        <View style={styles.documentActions}>
+          <TouchableOpacity
+            style={styles.viewButton}
+            onPress={() => router.push(`/screen/versionhistory`)}
+          >
+            <Text style={styles.viewButtonText}>{'View Document'}</Text>
+          </TouchableOpacity>
+          <View style={[styles.statusChip, { backgroundColor: getStatusColor(item.status) }]}>
+            <Text style={styles.statusText}>
+              {formatStatusText(item.status)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    </View>
+  ), [router, formatClassificationText, formatStatusText]);
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar backgroundColor="#15311E" barStyle="light-content" />
-      
+
       {/* Header */}
       <View style={styles.headerContainer}>
         <Image
           source={require('../../assets/images/udmaddress.png')}
           style={styles.headerImage}
         />
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.bellButton}
           onPress={() => router.push('/screen/notification')}
         >
@@ -137,90 +232,69 @@ export default function FacultyHome() {
             <Text
               style={[styles.tabText, activeTab === tab && styles.activeTabText]}
             >
-              {tab.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
+              {formatStatusText(tab)}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Document List */}
-      <FlatList
-        data={filteredDocuments}
-        renderItem={({ item }) => (
-          <View style={styles.documentItem}>
-            <View style={styles.documentContent}>
-              <Text style={styles.documentTitle}>{item.file_name}</Text>
-              <Text style={styles.documentSubtitle}>
-                Uploaded on {new Date(item.uploaded_at).toLocaleDateString()}
-              </Text>
-              <View style={styles.tagsContainer}>
-                {item.classifications.map(classification => (
-                  <View key={classification} style={styles.tagChip}>
-                    <Text style={styles.tagText}>
-                      {classification.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-              <View style={styles.documentActions}>
-                <TouchableOpacity 
-                  style={styles.viewButton}
-                  onPress={() => router.push(`/screen/versionhistory`)}
-                >
-                  <Text style={styles.viewButtonText}>View Document</Text>
-                </TouchableOpacity>
-                <View style={[styles.statusChip, { backgroundColor: getStatusColor(item.status) }]}>
-                  <Text style={styles.statusText}>
-                    {item.status.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                  </Text>
-                </View>
-              </View>
-            </View>
+      {/* Main Content Area */}
+      <View style={styles.contentArea}>
+        {loading ? (
+          <ActivityIndicator style={{ marginTop: 20 }} size="large" color="#15311E" />
+        ) : filteredDocuments.length === 0 ? (
+          <View style={styles.noDocumentsContainer}>
+            <Text style={styles.noDocumentsText}>{'No documents found.'}</Text>
           </View>
+        ) : (
+          <FlatList
+            data={filteredDocuments}
+            renderItem={renderDocumentItem}
+            keyExtractor={item => String(item.id)}
+            contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80 }}
+            refreshControl={
+              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+            }
+          />
         )}
-        keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingVertical: 8, paddingBottom: 80 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      />
+      </View>
 
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
-        <TouchableOpacity 
-          style={getActiveButtonStyle('home')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('home')}
           activeOpacity={0.7}
           onPress={() => router.replace({ pathname: "/(faculty)/home" })}
         >
           <Icon name="home-outline" size={24} color="#fff" />
-          <Text style={styles.navText}>HOME</Text>
+          <Text style={styles.navText}>{'HOME'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('search')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('search')}
           activeOpacity={0.7}
           onPress={() => router.push({ pathname: "/(faculty)/search" })}
         >
           <Icon name="search-outline" size={24} color="#fff" />
-          <Text style={styles.navText}>SEARCH</Text>
+          <Text style={styles.navText}>{'SEARCH'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('upload')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('upload')}
           activeOpacity={0.7}
           onPress={() => router.push({ pathname: "/(faculty)/upload" })}
         >
           <Icon name="cloud-upload-outline" size={24} color="#fff" />
-          <Text style={styles.navText}>UPLOAD</Text>
+          <Text style={styles.navText}>{'UPLOAD'}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity 
-          style={getActiveButtonStyle('profile')} 
+        <TouchableOpacity
+          style={getActiveButtonStyle('profile')}
           activeOpacity={0.7}
           onPress={() => router.replace("/(faculty)/profile")}
         >
           <Icon name="person-outline" size={24} color="#fff" />
-          <Text style={styles.navText}>PROFILE</Text>
+          <Text style={styles.navText}>{'PROFILE'}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -299,6 +373,9 @@ const styles = StyleSheet.create({
     color: '#0D2D1D',
     fontWeight: 'bold',
   },
+  contentArea: { // New style for the content area
+    flex: 1, // Make it take up available space
+  },
   documentItem: {
     backgroundColor: '#fff',
     marginHorizontal: 16,
@@ -325,26 +402,29 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
   },
+  // Corrected tagsContainer style to use flexWrap
   tagsContainer: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 8,
+    flexWrap: 'wrap', // <--- Apply flexWrap here
+    marginTop: 2,
+    marginBottom: 6,
   },
   tagChip: {
     backgroundColor: '#E8F0EE',
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 12,
     marginRight: 6,
-    marginBottom: 4,
+    marginBottom: 4, // Added margin bottom for wrapping
   },
   tagText: {
+    fontSize: 11,
     color: '#15311E',
-    fontSize: 12,
+    fontWeight: '500',
   },
   documentActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-between', // Changed from flex-start to space-between
     alignItems: 'center',
     marginTop: 8,
   },
@@ -353,20 +433,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
     borderRadius: 4,
+    marginRight: 8, // Keep marginRight if you add other buttons later
   },
   viewButtonText: {
     color: '#fff',
     fontWeight: '500',
   },
+  approveButton: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  approveButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
+  rejectButton: {
+    backgroundColor: '#F44336',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 4,
+  },
+  rejectButtonText: {
+    color: '#fff',
+    fontWeight: '500',
+  },
   statusChip: {
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8, // Keep marginLeft if other action buttons are present
   },
   statusText: {
     color: '#fff',
-    fontSize: 12,
     fontWeight: '500',
+    fontSize: 12,
+  },
+  noDocumentsContainer: { // Style for the "No documents found" message container
+    flex: 1, // Make it take up available space
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 50, // Adjust as needed
+  },
+  noDocumentsText: { // Style for the "No documents found" text
+    fontSize: 18,
+    color: '#666',
   },
   bottomNav: {
     position: 'absolute',

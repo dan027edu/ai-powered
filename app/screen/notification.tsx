@@ -33,7 +33,7 @@ const NotificationScreen = () => {
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch('http://192.168.1.7:8000/api/notifications/');
+      const response = await fetch('http://159.223.53.201/api/notifications/');
       const data = await response.json();
       setNotifications(data);
     } catch (error) {
@@ -43,7 +43,7 @@ const NotificationScreen = () => {
 
   const markAsRead = async (notificationId: number) => {
     try {
-      await fetch(`http://192.168.1.7:8000/api/notifications/${notificationId}/`, {
+      await fetch(`http://159.223.53.201/api/notifications/${notificationId}/`, {
         method: 'PUT',
       });
       // Update local state

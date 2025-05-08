@@ -29,8 +29,8 @@ const FacultyProfile = () => {
         {
           text: 'Logout',
           onPress: () => {
-            // Navigate to login screen
-            router.replace('/screen/in');
+            // Changed navigation to role screen
+            router.replace('/screen/role');
           },
           style: 'destructive',
         },
