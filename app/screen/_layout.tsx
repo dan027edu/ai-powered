@@ -5,7 +5,7 @@ import { withLayoutContext } from 'expo-router';
 const { Navigator } = Stack;
 
 export const unstable_settings = {
-  initialRouteName: 'index',
+  initialRouteName: 'log',
   screens: {
     'in': 'in',
     'log': 'log',
@@ -44,7 +44,7 @@ export default function ScreenLayout() {
       <Stack.Screen 
         name="documentviewer/[id]"
         options={{
-          animation: 'slide-from-right',
+          animation: 'slide_from_right',
           presentation: 'card',
           gestureEnabled: true,
           gestureDirection: 'horizontal'
